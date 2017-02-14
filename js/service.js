@@ -1,0 +1,1 @@
+angular.module("movieApp.service",[]).service("$movieServ",function(){this.jsonp=function(e,n,o){var c=document.createElement("script");e+="?";for(var i in n)e+=i+"="+n[i]+"&";e+="callback=aa",c.src=e,document.body.appendChild(c),window.aa=function(e){o(e),document.body.removeChild(c)}}});
