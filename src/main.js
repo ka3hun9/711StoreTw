@@ -1,32 +1,36 @@
 import * as fs from "fs";
 import * as path from "path";
 import axios from "axios";
+import axiosRetry from "axios-retry";
 import qs from "qs";
 import { XMLParser } from "fast-xml-parser";
 
 /**
  * 711店铺 - 台湾
  */
+axiosRetry(axios, { retries: 3 }); // 重试3次
+
 let state = "";
 let town = "";
 let road = "";
+let interval = 2000; // 请求速度, 默认3秒
 
 const _url = "https://emap.pcsc.com.tw/EMapSDK.aspx";
 
 const _root = [
-  ["01", "台北市"],
-  ["02", "基隆市"],
-  ["03", "新北市"],
-  ["04", "桃園市"],
-  ["05", "新竹市"],
-  ["06", "新竹縣"],
-  ["07", "苗栗縣"],
-  ["08", "台中市"],
-  ["10", "彰化縣"],
-  ["11", "南投縣"],
-  ["12", "雲林縣"],
-  ["13", "嘉義市"],
-  ["14", "嘉義縣"],
+  // ["01", "台北市"],
+  // ["02", "基隆市"],
+  // ["03", "新北市"],
+  // ["04", "桃園市"],
+  // ["05", "新竹市"],
+  // ["06", "新竹縣"],
+  // ["07", "苗栗縣"],
+  // ["08", "台中市"],
+  // ["10", "彰化縣"],
+  // ["11", "南投縣"],
+  // ["12", "雲林縣"],
+  // ["13", "嘉義市"],
+  // ["14", "嘉義縣"],
   ["15", "台南市"],
   ["17", "高雄市"],
   ["19", "屏東縣"],
@@ -49,12 +53,15 @@ async function requesDispatcher(parent, { serial, state, town, road }) {
   let temp = null;
   switch (true) {
     case !!road:
+      console.warn(`开始获取 ${state} - ${town} - ${road} 的店铺地址`);
       temp = await GetStore(state, town, road);
       break;
     case !!town:
+      console.warn(`开始获取 ${state} - ${town} 的街道`);
       temp = await GetRoad(state, town);
       break;
     case !!serial:
+      console.warn(`开始获取 ${state} 的下属地区`);
       temp = await GetTown(serial);
       break;
   }
@@ -63,22 +70,26 @@ async function requesDispatcher(parent, { serial, state, town, road }) {
 }
 
 // 通用请求
-async function requestHandler(options, filed, callback) {
-  const { status, data } = await axios.post(_url, qs.stringify(options));
-  console.log(options, data);
-  if (status === 200) {
-    const parser = new XMLParser().parse(data);
-    const fileds = parser.iMapSDKOutput[filed];
-    if (Array.isArray(fileds)) {
-      return fileds.map(callback);
-    } else if (fileds) {
-      return [callback(fileds)];
-    } else {
-      return [];
-    }
-  } else {
-    throw new Error(`${filed} 请求错误.`);
-  }
+function requestHandler(options, filed, callback) {
+  return new Promise((resolve) => {
+    setTimeout(async () => {
+      const { status, data } = await axios.post(_url, qs.stringify(options));
+      console.log(options, data);
+      if (status === 200) {
+        const parser = new XMLParser().parse(data);
+        const fileds = parser.iMapSDKOutput[filed];
+        if (Array.isArray(fileds)) {
+          resolve(fileds.map(callback));
+        } else if (fileds) {
+          resolve([callback(fileds)]);
+        } else {
+          resolve([]);
+        }
+      } else {
+        throw new Error(`${filed} 请求错误.`);
+      }
+    }, interval);
+  });
 }
 
 // 获取分区
@@ -157,7 +168,7 @@ async function GetStore(state, town, road) {
 
         if (!next) {
           fs.writeFileSync(
-            path.resolve(process.cwd(), "./dist/output.json"),
+            path.resolve(process.cwd(), `./dist/${state}.json`),
             JSON.stringify(_root)
           );
         } else {

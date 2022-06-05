@@ -16,7 +16,10 @@ export default {
       format: {
         comments: false,
       },
-      compress: { drop_console: true },
+      compress: {
+        // drop_console: true,
+        pure_funcs: ["console.log"],
+      },
     }),
   ],
 };
