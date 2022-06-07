@@ -4,6 +4,7 @@ import axios from "axios";
 import axiosRetry from "axios-retry";
 import qs from "qs";
 import { XMLParser } from "fast-xml-parser";
+import { isUndefined } from "lodash-es";
 
 /**
  * 711店铺 - 台湾
@@ -13,7 +14,7 @@ axiosRetry(axios, { retries: 3 }); // 重试3次
 let state = "";
 let town = "";
 let road = "";
-let interval = 2000; // 请求速度, 默认3秒
+let interval = 2000; // 请求速度, 默认2秒
 
 const _url = "https://emap.pcsc.com.tw/EMapSDK.aspx";
 
@@ -31,13 +32,13 @@ const _root = [
   // ["12", "雲林縣"],
   // ["13", "嘉義市"],
   // ["14", "嘉義縣"],
-  ["15", "台南市"],
-  ["17", "高雄市"],
-  ["19", "屏東縣"],
-  ["20", "宜蘭縣"],
-  ["21", "花蓮縣"],
-  ["22", "台東縣"],
-  ["23", "澎湖縣"],
+  // ["15", "台南市"],
+  // ["17", "高雄市"],
+  // ["19", "屏東縣"],
+  // ["20", "宜蘭縣"],
+  // ["21", "花蓮縣"],
+  // ["22", "台東縣"],
+  // ["23", "澎湖縣"],
   ["24", "連江縣"],
   ["25", "金門縣"],
 ].map((item) => ({
@@ -52,15 +53,15 @@ const _root = [
 async function requesDispatcher(parent, { serial, state, town, road }) {
   let temp = null;
   switch (true) {
-    case !!road:
+    case !isUndefined(road):
       console.warn(`开始获取 ${state} - ${town} - ${road} 的店铺地址`);
       temp = await GetStore(state, town, road);
       break;
-    case !!town:
+    case !isUndefined(town):
       console.warn(`开始获取 ${state} - ${town} 的街道`);
       temp = await GetRoad(state, town);
       break;
-    case !!serial:
+    case !isUndefined(serial):
       console.warn(`开始获取 ${state} 的下属地区`);
       temp = await GetTown(serial);
       break;
@@ -78,6 +79,7 @@ function requestHandler(options, filed, callback) {
       if (status === 200) {
         const parser = new XMLParser().parse(data);
         const fileds = parser.iMapSDKOutput[filed];
+        console.log(parser);
         if (Array.isArray(fileds)) {
           resolve(fileds.map(callback));
         } else if (fileds) {
@@ -145,33 +147,45 @@ async function GetStore(state, town, road) {
   }));
 }
 
-// 队列
+/**
+ * 执行队列
+ * @param root 源数据
+ */
 (function queue(root) {
-  let source = root.map(
+  const source = root.map(
     (item, index) =>
       async function () {
-        state = item.state ? item.state : state;
-        town = item.state ? "" : item.town ? item.town : town;
-        road = item.state ? "" : item.town ? "" : item.road ? item.road : road;
+        const savable = !isUndefined(item.state) && state !== item.state; // 是否执行保存
+        state = !isUndefined(item.state) ? item.state : state;
+        town = !isUndefined(item.state) ? void 0 : item.town ? item.town : town;
+        road = !isUndefined(item.state)
+          ? void 0
+          : !isUndefined(item.town)
+          ? void 0
+          : !isUndefined(item.road)
+          ? item.road
+          : road;
 
         const next = source[++index];
-        const parent = await requesDispatcher(item, {
-          serial: item.serial,
-          state,
-          town,
-          road,
-        });
-
-        if (parent[0] && typeof parent[0].children !== "undefined") {
-          await queue(parent)[0]();
-        }
 
         if (!next) {
-          fs.writeFileSync(
-            path.resolve(process.cwd(), `./dist/${state}.json`),
-            JSON.stringify(_root)
-          );
+          savable &&
+            fs.writeFileSync(
+              path.resolve(process.cwd(), `./dist/${state}.json`),
+              JSON.stringify(_root)
+            );
         } else {
+          const parent = await requesDispatcher(item, {
+            serial: item.serial,
+            state,
+            town,
+            road,
+          });
+
+          if (parent[0] && typeof parent[0].children !== "undefined") {
+            await queue(parent)[0]();
+          }
+
           await next();
         }
       }
