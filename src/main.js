@@ -19,26 +19,26 @@ let interval = 2000; // 请求速度, 默认2秒
 const _url = "https://emap.pcsc.com.tw/EMapSDK.aspx";
 
 const _root = [
-  // ["01", "台北市"],
-  // ["02", "基隆市"],
-  // ["03", "新北市"],
-  // ["04", "桃園市"],
-  // ["05", "新竹市"],
-  // ["06", "新竹縣"],
-  // ["07", "苗栗縣"],
-  // ["08", "台中市"],
-  // ["10", "彰化縣"],
-  // ["11", "南投縣"],
-  // ["12", "雲林縣"],
-  // ["13", "嘉義市"],
-  // ["14", "嘉義縣"],
-  // ["15", "台南市"],
-  // ["17", "高雄市"],
-  // ["19", "屏東縣"],
-  // ["20", "宜蘭縣"],
-  // ["21", "花蓮縣"],
-  // ["22", "台東縣"],
-  // ["23", "澎湖縣"],
+  ["01", "台北市"],
+  ["02", "基隆市"],
+  ["03", "新北市"],
+  ["04", "桃園市"],
+  ["05", "新竹市"],
+  ["06", "新竹縣"],
+  ["07", "苗栗縣"],
+  ["08", "台中市"],
+  ["10", "彰化縣"],
+  ["11", "南投縣"],
+  ["12", "雲林縣"],
+  ["13", "嘉義市"],
+  ["14", "嘉義縣"],
+  ["15", "台南市"],
+  ["17", "高雄市"],
+  ["19", "屏東縣"],
+  ["20", "宜蘭縣"],
+  ["21", "花蓮縣"],
+  ["22", "台東縣"],
+  ["23", "澎湖縣"],
   ["24", "連江縣"],
   ["25", "金門縣"],
 ].map((item) => ({
@@ -150,12 +150,12 @@ async function GetStore(state, town, road) {
 /**
  * 执行队列
  * @param root 源数据
+ * @param level 层级
  */
-(function queue(root) {
+(function queue(root, level) {
   const source = root.map(
     (item, index) =>
       async function () {
-        const savable = !isUndefined(item.state) && state !== item.state; // 是否执行保存
         state = !isUndefined(item.state) ? item.state : state;
         town = !isUndefined(item.state) ? void 0 : item.town ? item.town : town;
         road = !isUndefined(item.state)
@@ -166,29 +166,29 @@ async function GetStore(state, town, road) {
           ? item.road
           : road;
 
+        const parent = await requesDispatcher(item, {
+          serial: item.serial,
+          state,
+          town,
+          road,
+        });
+
+        if (parent[0] && !isUndefined(parent[0].children)) {
+          await queue(parent, level + 1)[0]();
+        }
+
         const next = source[++index];
 
-        if (!next) {
-          savable &&
-            fs.writeFileSync(
-              path.resolve(process.cwd(), `./dist/${state}.json`),
-              JSON.stringify(_root)
-            );
-        } else {
-          const parent = await requesDispatcher(item, {
-            serial: item.serial,
-            state,
-            town,
-            road,
-          });
-
-          if (parent[0] && typeof parent[0].children !== "undefined") {
-            await queue(parent)[0]();
-          }
-
-          await next();
+        if (!level) {
+          console.log(`正在执行保存 ${state}...`);
+          fs.writeFileSync(
+            path.resolve(process.cwd(), `./dist/${state}.json`),
+            JSON.stringify(item)
+          );
         }
+
+        next && (await next());
       }
   );
   return source;
-})(_root)[0]();
+})(_root, 0)[0]();
